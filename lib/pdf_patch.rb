@@ -17,7 +17,7 @@ module IssuesPdfHelperPatch
       pdf = ::Redmine::Export::PDF::ITCPDF.new(current_language)
       pdf.set_title("#{issue.project} - #{issue.tracker} ##{issue.id}")
       pdf.alias_nb_pages
-      pdf.footer_date = format_date(Date.today)
+      pdf.footer_date = format_date(User.current.today)
       pdf.add_page
       pdf.SetFontStyle('B',11)
       buf = "#{issue.project} - #{issue.tracker} ##{issue.id}"
@@ -51,6 +51,7 @@ module IssuesPdfHelperPatch
       right << [l(:field_estimated_hours), l_hours(issue.estimated_hours)] unless issue.disabled_core_fields.include?('estimated_hours') || !User.current.allowed_to?(:view_time_entries, issue.project)
       right << [l(:label_spent_time), l_hours(issue.total_spent_hours)] if User.current.allowed_to?(:view_time_entries, issue.project)
 
+
       rows = left.size > right.size ? left.size : right.size
       while left.size < rows
         left << nil
@@ -59,8 +60,9 @@ module IssuesPdfHelperPatch
         right << nil
       end
 
-      half = (issue.visible_custom_field_values.size / 2.0).ceil
-      issue.visible_custom_field_values.each_with_index do |custom_value, i|
+      custom_field_values = issue.visible_custom_field_values.reject {|value| value.custom_field.full_width_layout?}
+      half = (custom_field_values.size / 2.0).ceil
+      custom_field_values.each_with_index do |custom_value, i|
         (i < half ? left : right) << [custom_value.custom_field.name, show_value(custom_value, false)]
       end
 
@@ -119,6 +121,17 @@ module IssuesPdfHelperPatch
                           :inline_attachments => false
       )
       pdf.RDMwriteFormattedCell(35+155, 5, '', '', text, issue.attachments, "LRB")
+
+      custom_field_values = issue.visible_custom_field_values.select {|value| value.custom_field.full_width_layout?}
+      custom_field_values.each do |value|
+        text = show_value(value, false)
+        next if text.blank?
+
+        pdf.SetFontStyle('B',9)
+        pdf.RDMCell(35+155, 5, value.custom_field.name, "LRT", 1)
+        pdf.SetFontStyle('',9)
+        pdf.RDMwriteHTMLCell(35+155, 5, '', '', text, issue.attachments, "LRB")
+      end
 
       unless issue.leaf?
         truncate_length = (!is_cjk? ? 90 : 65)
@@ -229,6 +242,7 @@ module IssuesPdfHelperPatch
       end
       pdf.output
     end
+
 
   end
 end
